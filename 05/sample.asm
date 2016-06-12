@@ -1,0 +1,7 @@
+D,JMP //111
+D,JLT //100
+D,JLE //110
+D,JEQ //010
+D,JNE //101
+D,JGT //001
+D,JGE //011

@@ -1,0 +1,120 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/05/CPU.hdl
+
+/**
+ * The Hack CPU (Central Processing unit), consisting of an ALU,
+ * two registers named A and D, and a program counter named PC.
+ * The CPU is designed to fetch and execute instructions written in 
+ * the Hack machine language. In particular, functions as follows:
+ * Executes the inputted instruction according to the Hack machine 
+ * language specification. The D and A in the language specification
+ * refer to CPU-resident registers, while M refers to the external
+ * memory location addressed by A, i.e. to Memory[A]. The inM input 
+ * holds the value of this location. If the current instruction needs 
+ * to write a value to M, the value is placed in outM, the address 
+ * of the target location is placed in the addressM output, and the 
+ * writeM control bit is asserted. (When writeM==0, any value may 
+ * appear in outM). The outM and writeM outputs are combinational: 
+ * they are affected instantaneously by the execution of the current 
+ * instruction. The addressM and pc outputs are clocked: although they 
+ * are affected by the execution of the current instruction, they commit 
+ * to their new values only in the next time step. If reset==1 then the 
+ * CPU jumps to address 0 (i.e. pc is set to 0 in next time step) rather 
+ * than to the address resulting from executing the current instruction. 
+ */
+
+CHIP CPU {
+
+    IN  inM[16],         // M value input  (M = contents of RAM[A])
+        instruction[16], // Instruction for execution
+        reset;           // Signals whether to re-start the current
+                         // program (reset==1) or continue executing
+                         // the current program (reset==0).
+
+    OUT outM[16],        // M value output
+        writeM,          // Write to M? 
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // address of next instruction
+
+    PARTS:
+    // Put your code here:
+    
+    //Instruction input
+    // If it is A instruction then Mux16 should output the address to be stored in A register.
+    //  or if dest bits in C instruction instructs to effect A register then store the output of ALU
+    //5th bit in instruction tells if dest is 'A'.
+    Not(in=instruction[15], out=isA);
+    Mux16(a=outM1, b[0..14]=instruction[0..14], b[15]=false, sel=isA, out=iAReg);
+    //load 'A' register only when there is 'A' instruction or when 'C' instruction effects 'A' register.
+    And(a=instruction[5], b=instruction[15], out=oAEffected);
+    Or(a=isA, b=oAEffected, out=oLoadA);
+    ARegister(in=iAReg, load=oLoadA, out[0..14]=addressM, out=oAReg);
+
+    //Memory input
+    // If comp is 'A' in instruction[12] then A else inM. The unknown cases where the instruction is not a C instruction does not matter I suppose.
+    Mux16(a=oAReg, b=inM, sel=instruction[12], out=oAorM);
+
+    //D-register input
+    // If instruction is 'C' and destination is 'D' register then load 'D'
+    // instruction[15] tells if it is 'C'. insturction[4] tells if destination is 'D'
+    And(a=instruction[15], b=instruction[4], out=oLoadD);
+    DRegister(in= outM2, load=oLoadD, out=oDReg);
+
+    //ALU input
+    //IN  
+    //    x[16], y[16],  // 16-bit inputs        
+    //    zx, // zero the x input?
+    //     nx, // negate the x input?
+    //     zy, // zero the y input?
+    //     ny, // negate the y input?
+    //     f,  // compute out = x + y (if 1) or x & y (if 0)
+    //     no; // negate the out output?
+
+    // OUT 
+    //     out[16], // 16-bit output
+    //     zr, // 1 if (out == 0), 0 otherwise
+    //     ng; // 1 if (out < 0),  0 otherwise
+
+    //possible values for X & Y are 'D', oAorM, true, false
+    ALU(x=oDReg, y=oAorM, zx=instruction[11], nx=instruction[10], zy=instruction[9], ny=instruction[8], f=instruction[7], no=instruction[6],
+            out=outM, out=outM1, out=outM2, zr=zr, ng=ng);
+
+
+    //Write to Memory
+    // If instruction is C and If dest=M then write to writeM
+    // instruction[15] tells if it is 'C'. insturction[3] tells if destination is 'M'
+    And(a=instruction[15], b=instruction[3], out=writeM);
+
+    // PC
+    // ---------------
+    //Check for JMP in instruction and if 000 then inc=1
+    //If any of the JMP is true, then load=1
+    //JGT out>0 if ng=0 and zr=0 from ALU 
+    //JEQ out=0 if zr=1
+    //JGE out>=0 if ng=0
+    //JLT out<0 if ng=1
+    //JNE out!=0 
+    //JLE out<=0 if ng=1 or zr=1
+    //JMP load=1
+    //inc is false if ins=c and jmp is not null
+
+    Or(a=ng, b=zr, out=oJGTtemp);
+    Not(in=oJGTtemp,out=oJGT);
+    Not(in=ng,out=oJGE);
+    Not(in=zr, out=oJNE);
+    Or(a=ng, b=zr, out=oJLE);
+    Mux8Way16(a[0]=false,a[1..15]=false,
+              b[0]=oJGT,b[1..15]=false,
+              c[0]=zr,c[1..15]=false,
+              d[0]=oJGE,d[1..15]=false,
+              e[0]=ng,e[1..15]=false,
+              f[0]=oJNE,f[1..15]=false,
+              g[0]=oJLE,g[1..15]=false,
+              h[0]=true,h[1..15]=false,
+                sel=instruction[0..2],out[0]=oJMP);
+    And(a=instruction[15], b=oJMP, out=iLoad);//instruction should be a 'C'
+    Not(in=iLoad, out=oInc);
+    PC(in=oAReg, load=iLoad, inc=true, reset=reset, out[0..14]=pc);
+}
